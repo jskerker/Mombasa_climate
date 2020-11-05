@@ -1,6 +1,6 @@
 
 function [T_Temp_abs, T_Precip_abs, T_Temp_delta, T_Precip_delta, T_over_time, P_over_time] ...
-    = bma2TransMat( NUT, NUP, s_T, s_P, N, climParam)
+    = bma2TransMat_v2( NUT, NUP, s_T, s_P, N, climParam)
 
 % Inputs BMA samples and returns Bellman transition matrices
 
@@ -39,6 +39,47 @@ if climParam.checkBins
     percPout = length(indP)/numPSamp
     
 end
+%% If there are values outside of the range, round them
+
+% Round NUT values outside of the range into the range
+if percTout > 0
+    for i=1:1000
+        for t = 1:N
+            for index_s_T = 1:M_T
+                if NUT(i,t,index_s_T) < T_bins(1);
+                    NUT(i,t,index_s_T) = T_bins(1);
+                elseif NUT(i,t,index_s_T) > T_bins(end)
+                    NUT(i,t,index_s_T) = T_bins(end);
+                end 
+            end
+        end
+    end
+end
+
+% Round NUP values outside of the range into the range
+if percPout > 0
+    for i=1:1000
+        for t = 1:N
+            for index_s_P = 1:M_P
+                if NUP(i,t,index_s_P) < P_bins(1);
+                    NUP(:,t,index_s_P) = P_bins(1);
+                elseif NUP(i,t,index_s_P) > P_bins(end)
+                    NUP(i,t,index_s_P) = P_bins(end);
+                end 
+            end
+        end
+    end
+end
+
+% Check that issue is fixed
+numTSamp = numel(NUT);
+indT = find(NUT < T_bins(1) | NUT > T_bins(end));
+percTout2 = length(indT)/numTSamp
+
+numPSamp = numel(NUP);
+indP = find(NUP < P_bins(1) | NUP > P_bins(end));
+percPout2 = length(indP)/numPSamp
+%% 
 
 % Calculate transition matrices for deltas
 
@@ -78,14 +119,14 @@ P_delta_over_time = s_P(state_ind_P);
 
 
 % Select starting point 
-T0_abs_ind = randi(M_T_abs,climParam.numSamp_delta2abs,1);
-P0_abs_ind = randi(M_P_abs,climParam.numSamp_delta2abs,1);
+T0_abs_ind = randi(M_T_abs,climParam.numSamp_delta2abs,1); %should this line only be choosing a random number between 1 and 31?
+P0_abs_ind = randi(M_P_abs,climParam.numSamp_delta2abs,1); %I think we'd still want rounding for precip
 T0_abs = s_T_abs(T0_abs_ind)';
 P0_abs = s_P_abs(P0_abs_ind)';
 
 % Sum Temp delta time series to get absolutes
 T_over_time = cumsum( T_delta_over_time,2) + repmat(T0_abs,1,6);
-T_over_time2 = T_over_time - repmat(T_over_time(:,2),1,6)+28*ones(size(T_over_time));
+%T_over_time2 = T_over_time - repmat(T_over_time(:,2),1,6)+28*ones(size(T_over_time));
 
 
 % Precip is percent change
@@ -102,7 +143,52 @@ for i = 1:climParam.numSamp_delta2abs
 end
 
 
+%% Round values so that temp and precip values do not extend past state space
 
+% Check number of values initially outside
+numTSamp = numel(T_over_time);
+indT = find(T_over_time < s_T_abs(1) | T_over_time > s_T_abs(end));
+percTout = length(indT)/numTSamp
+
+numPSamp = numel(P_over_time);
+indP = find(P_over_time < s_P_abs(1) | P_over_time > s_P_abs(end));
+percPout = length(indP)/numPSamp
+
+%Round T_over_time values outside of range
+if percTout > 0
+    for i=1:100000
+        for t = 1:N+1
+            if T_over_time(i,t) < s_T_abs(1);
+                T_over_time(i,t) = s_T_abs(1);
+                
+            elseif T_over_time(i,t) > s_T_abs(end);
+                T_over_time(i,t) = s_T_abs(end);
+            end
+        end
+    end
+end
+
+%Round P_over_time values outside of range
+if percPout > 0
+    for i=1:100000
+        for t = 1:N+1
+            if P_over_time(i,t) < s_P_abs(1);
+                P_over_time(i,t) = s_P_abs(1);
+            elseif P_over_time(i,t) > s_P_abs(end)
+                P_over_time(i,t) = s_P_abs(end);
+            end
+        end
+    end
+end
+
+% Check that issue is fixed
+numTSamp = numel(T_over_time);
+indT = find(T_over_time < s_T_abs(1) | T_over_time > s_T_abs(end));
+percTout2 = length(indT)/numTSamp
+
+numPSamp = numel(P_over_time);
+indP = find(P_over_time < s_P_abs(1) | P_over_time > s_P_abs(end));
+percPout2 = length(indP)/numPSamp
 %% Absolutes from time series
 
 % Calculate conditional prob of going from state X in time t-1 to state Y
@@ -137,7 +223,7 @@ temp_T_temp(ind) = 0;
 index = sub2ind(size(temp_T_temp), ind2, ind2, ind3);
 temp_T_temp(index) = 1;
 if sum(find( abs(sum(temp_T_temp) -1) > .001)) > 0
-    error('invalid T temp')
+     error('invalid T temp')
 end
 T_Temp_abs = temp_T_temp;
 
@@ -147,9 +233,9 @@ ind = find(isnan(T_Precip_abs));
 temp_T_Precip(ind) = 0;
 [ind1, ind2, ind3] = ind2sub(size(sum(temp_T_Precip)), find(sum(temp_T_Precip) == 0));
 index = sub2ind(size(temp_T_Precip), ind2, ind2, ind3);
-temp_T_Precip(index) = 1;
+temp_T_Precip(index) = 1; %stay in this state
 if sum(find( abs(sum(temp_T_Precip) -1) > .001)) > 0
-    error('invalid T Precip')
+     error('invalid T Precip')
 end
 T_Precip_abs = temp_T_Precip;
 
