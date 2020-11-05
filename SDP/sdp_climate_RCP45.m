@@ -15,12 +15,11 @@
 % Set Project root folder andAdd subfolders to path; runs either on desktop 
 % or on a cluster using SLURM queueing system 
 if ~isempty(getenv('SLURM_JOB_ID'))
-    projpath = '/Users/jenniferskerker/Documents/GradSchool/Research/Project1/Code/Models/Mombasa_climate/SDP/Mombasa_climate';
+    projpath = '/net/fs02/d2/sfletch/Mombasa_climate';
 else
-    projpath = '/Users/jenniferskerker/Documents/GradSchool/Research/Project1/Code/Models/Mombasa_climate/SDP/Mombasa_Climate';
+    projpath = '/Users/sarahfletcher/Dropbox (MIT)/Research/Mombasa_Climate';
 end
 addpath(genpath(projpath))
-addpath('/Users/jenniferskerker/Documents/GradSchool/Research/Project1/Code/Models/Fletcher_2019_Learning_Climate')
 
 jobid = getenv('SLURM_JOB_ID');
 
@@ -41,14 +40,10 @@ runParam = struct;
 runParam.N = 5; 
 
 % If true, run SDP to calculate optimal policies
-runParam.runSDP = true; 
+runParam.runSDP = false; 
 
 % Number of years to generate in T, P, streamflow time series
 runParam.steplen = 20; 
-
-% Set Emissions Scenarios
-emisScenario = {'RCP19' 'RCP26' 'RCP34' 'RCP45' 'RCP6' 'RCP7' 'RCP85'}
-setPathway = emisScenario{4}
 
 % If true, simulate runoff time series from T, P time series using CLIRUN. If false, load saved.
 runParam.runRunoff = false; 
@@ -60,7 +55,7 @@ runParam.runTPts = false;
 runParam.runoffPostProcess = false; 
 
 % If true, use optimal policies from SDP to do Monte Carlo simulation to esimate performance
-runParam.forwardSim = true; 
+runParam.forwardSim = false; 
 
 % If true, calculate Bellman transition matrix from BMA results. If false, load saved.
 runParam.calcTmat = true; 
@@ -83,7 +78,7 @@ runParam.runoffLoadName = 'runoff_by_state_Mar16_knnboot_1t';
 runParam.shortageLoadName = 'shortage_costs_28_Feb_2018_17_04_42';
 
 % If true, save results
-runParam.saveOn = true;
+runParam.saveOn = false;
 
 
 % Set up climate parameters
@@ -200,19 +195,19 @@ end
 % Bayesian statistical model
 
 if runParam.calcTmat
-    load('/Users/jenniferskerker/Documents/GradSchool/Research/Project1/Code/Models/Mombasa_climate/BMA_code/BMA_results_RCP45_deltas_2019-07-29.mat')
-    [T_Temp_RCP45, T_Precip_RCP45, ~, ~, ~, ~] = bma2TransMat_v2( NUT, NUP, s_T, s_P, N, climParam);
-    save('T_Temp_Precip_RCP45', 'T_Temp_RCP45', 'T_Precip_RCP45')    
+    load('BMA_code/BMA_results_RCP45_deltas_2019-07-29.mat')
+    [T_Temp, T_Precip, ~, ~, ~, ~] = bma2TransMat( NUT, NUP, s_T, s_P, N, climParam);
+    save('T_Temp_Precip', 'T_Temp', 'T_Precip')    
 else
-    load('T_Temp_Precip_RCP45') 
+    load('T_Temp_Precip') 
 end
 
 % Prune state space -- no need to calculate policies for T and P states
 % that are never reached when simulating future climates based on Bayesian
 % model
 for t = 1:N
-    index_s_p_time{t} = find(~isnan(T_Precip_RCP45(1,:,t)));
-    index_s_t_time{t} = find(~isnan(T_Temp_RCP45(1,:,t)));
+    index_s_p_time{t} = find(~isnan(T_Precip(1,:,t)));
+    index_s_t_time{t} = find(~isnan(T_Temp(1,:,t)));
 end
 
 
@@ -525,13 +520,13 @@ for t = linspace(N,1,N)
                     end
 
                     % Temperature transmat vector
-                    T_Temp_row = T_Temp_RCP45(:,index_s_t, t)';
+                    T_Temp_row = T_Temp(:,index_s_t, t)';
                     if sum(isnan(T_Temp_row)) > 0
                         error('Nan in T_Temp_row')
                     end
                     
                     % Precipitation transmat vector
-                    T_Precip_row = T_Precip_RCP45(:,index_s_p, t)';
+                    T_Precip_row = T_Precip(:,index_s_p, t)';
                     if sum(isnan(T_Precip_row)) > 0
                         error('Nan in T_Precip_row')
                     end
@@ -578,7 +573,7 @@ end
 
 if runParam.saveOn
     
-    savename_results = strcat('results_', setPathway,jobid,'_', datetime,'.mat');
+    savename_results = strcat('results', jobid,'_', datetime);
     save(savename_results)
     
 end
@@ -607,7 +602,7 @@ shortageCostTime = zeros(R,N,4);
 opexCostTime = zeros(R,N,4);
 totalCostTime = zeros(R,N,4); 
 
-load('/Users/jenniferskerker/Documents/GradSchool/Research/Project1/Code/Models/Mombasa_climate/BMA_code/BMA_results_RCP45_deltas_2019-07-29.mat', 'MUT', 'MUP')
+load('BMA_results_RCP45_deltas_2019-07-29.mat', 'MUT', 'MUP')
 indT0 = find(s_T_abs == climParam.T0_abs);
 indP0 = find(s_P_abs == climParam.P0_abs);
 T0samp = MUT(:,1,indT0);
@@ -636,13 +631,13 @@ for i = 1:R
             
         
         % Temperature transmat vector
-            T_Temp_row = T_Temp_RCP45(:,index_t, t)';
+            T_Temp_row = T_Temp(:,index_t, t)';
             if sum(isnan(T_Temp_row)) > 0
                 error('Nan in T_Temp_row')
             end
 
             % Precipitation transmat vector
-            T_Precip_row = T_Precip_RCP45(:,index_p, t)';
+            T_Precip_row = T_Precip(:,index_p, t)';
             if sum(isnan(T_Precip_row)) > 0
                 error('Nan in T_Precip_row')
             end
@@ -771,7 +766,7 @@ end
 
 if runParam.saveOn
     
-    savename_results = strcat('results_', setPathway, jobid,'_', datetime,'.mat');
+    savename_results = strcat('results', jobid,'_', datetime);
     save(savename_results)
     
 end
